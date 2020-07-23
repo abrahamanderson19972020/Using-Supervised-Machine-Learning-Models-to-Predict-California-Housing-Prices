@@ -1,0 +1,293 @@
+import numpy as np 
+import pandas as pd
+
+
+""" 1.Getting Data and First Insights About the Data"""
+train=pd.read_csv("../input/housingprices.txt") # You can download this data set and use the same data
+train.head()
+#Each row represents one district in California and there 10 columns or features
+#We have only one non-numerical column, ocean_proximitt column:
+
+train["ocean_proximity"].value_counts()
+#df.value_counts() is very useful method because we can see how many categories each column has
+
+train.describe(include="all") # we get overal statistical information about cumerical columns of the data
+
+import seaborn as sns
+import matplotlib.pyplot as plt
+%matplotlib inline
+sns.pairplot(train)
+# we get pair relations of the columns of the data
+
+train.hist(bins=50,figsize=(20,15)) #here we get histograms of all numerical variables
+
+housing = train.copy() # here we create a copy so that we can play with it without harming the training set
+
+
+"""2.Visualization and Deeper Insights of the Data"""
+
+#Since there is geographical information(latitude and longitude of each district),
+# it is better to create a scatterplot of all districts
+housing.plot(x="longitude",y="latitude",kind="scatter")
+
+#This looks like California all right, but other than that it is hard to see any particular pattern. 
+#Setting the alpha option to 0.1 makes it much easier to visualize the places where there is a high density of data points
+housing.plot(x="longitude",y="latitude",kind="scatter",alpha=0.1,figsize=(20,15))
+#Now that’s much better: you can clearly see the high-density areas, namely the Bay Area and around Los Angeles and San Diego
+
+
+housing.plot(kind="scatter", x="longitude", y="latitude", alpha=0.4,
+s=housing["population"]/100, label="population", figsize=(20,15),
+c="median_house_value", cmap=plt.get_cmap("jet"), colorbar=True,)
+plt.legend()
+#The radius of each circle represents the district’s population (option s), and the color represents the price (option c). 
+#We will use a predefined color map (option cmap) called jet, which ranges from blue (low values) to red (high prices):
+#c value are represented in the colorbar 
+#The size of the circle represent the amounth of the population and the color inside it is the median house value
+
+
+housing.plot(kind="scatter", x="longitude", y="latitude", alpha=0.4,
+s=housing["population"]/10, label="population", figsize=(20,15),
+c="median_house_value", cmap=plt.get_cmap("jet"), colorbar=True,title="California housing prices: red is expensive, blue is cheap, larger circles indicate areas with a larger population")
+plt.legend()
+# we divide population by 100 because otherwise the circles will be tto big in the map
+#This image tells you that the housing prices are very much related to the location (e.g., close to the ocean) 
+#and to the population density, as you probably knew already.
+
+
+housing.plot(kind="scatter", x="longitude", y="latitude", alpha=0.4,
+s=housing["population"]/20, label="population", figsize=(20,15),
+c="median_income", cmap=plt.get_cmap("jet"), colorbar=True,)
+plt.legend()
+#The size of the circle represent the amounth of the population and the color inside it is the median house value
+# we can change it with another column name like median income
+
+
+#we can easily compute the standard correlation coefficient (also called Pearson’s r) between every pair of by attributes using the corr() method:
+correlation=housing.corr()
+print(correlation)
+
+"""The correlation coefficient ranges from –1 to 1. When it is close to 1, it means that there is a strong positive correlation; 
+for example, the median house value tends to go up when the median income goes up.When the coefficient is close to –1, it means that there is a strong negative correlation;
+you can see a small negative correlation between the latitude and the median house value (i.e., prices have a slight tendency to go down when you go north).
+Finally, coefficients close to 0 mean that there is no linear correlation"""
+
+#we can specifically see the correlation of a specific column
+correlation["median_house_value"]
+correlation["median_house_value"].sort_values(ascending=False) #now we list them from the highest to the lowest
+
+
+"""The correlation coefficient only measures linear correlations (“if x goes up, then y generally goes up/down”). 
+It may completely miss out on nonlinear relationships (e.g., “if x is close to 0, then y generally goes up”).
+Note how all the plots of the bottom row have a correlation coefficient equal to 0, despite the fact that their axes are clearly not independent:
+these are examples of nonlinear relationships."""
+
+
+"""Another way to check for correlation between attributes is to use the pandas scatter_matrix() function, 
+which plots every numerical attribute against every other numerical attribute. Since there are now 11 numerical attributes, 
+you would get 11 = 121 plots, which would not fit on a page—so let’s just focus on a few promising attributes that seem most correlated with the median housing value"""
+from pandas.plotting import scatter_matrix
+imp_features=["median_house_value", "median_income", "total_rooms","housing_median_age"]
+scatter_matrix(housing[imp_features],figsize=(15,10))
+#Median_income seems the most correlated feature among others with respect to house prices
+
+sns.pairplot(housing) #sns.pairplot() gives us all binary relation between all variables
+
+
+"""3.Cleaning the Data and Adding New Features:"""
+
+"""The total number of rooms in a district is not very useful if you don’t know how many households there are.
+What you really want is the number of rooms per household. Similarly, the total number of bedrooms by itself is not very useful: 
+you probably want to compare it to the number of rooms. And the population per household also seems like an interesting attribute combination to look at"""
+
+#Here we create three new columns which are more useful for our algorithm:
+housing["rooms_per_household"]=housing["total_rooms"]/housing["households"]
+housing["bedrooms_per_room"]=housing["total_bedrooms"]/housing["total_rooms"]
+housing["population_per_household"]=housing["population"]/housing["households"]
+housing.head()
+
+#Lets check new correlations:
+corr_matrix=housing.corr()
+corr_matrix["median_house_value"].sort_values(ascending=False)
+#Below we see that bedroom per room is negatively correlated with the value of house 
+#While number of bedrooms in the district  does not make sense or not crrelate with the value of house
+#Secondly rooms per household effects also a positively the value of the house while households column does not make sense
+
+new_features=["median_house_value", "rooms_per_household", "population_per_household","bedrooms_per_room"]
+scatter_matrix(housing[new_features],figsize=(15,10))
+#Below we visualize the new features we added with the value of house
+
+
+"""4.Preparing Data for the Algorithm"""
+
+"""*Most Machine Learning algorithms cannot work with missing features, so we need to fix them:
+We can accomplish these easily using DataFrame’s dropna(), drop(), and fillna() methods: 
+          #housing.dropna(subset=["total_bedrooms"]) 
+          # option 1 housing.drop("total_bedrooms", axis=1) 
+          # option 2 median = housing["total_bedrooms"].median() 
+          # option 3 housing["total_bedrooms"].fillna(median, inplace=True)"""
+
+           """4.1. Handling Numerical Variables"""
+
+"""Scikit-Learn provides a handy class to take care of missing values: SimpleImputer. Here is how to use it. 
+First, you need to create a SimpleImputer instance, specifying that you want to replace each attribute’s missing values with the median of that attribute: 
+from sklearn.impute import SimpleImputer imputer = SimpleImputer(strategy="median")
+
+SimpleImputer(*, missing_values=nan, strategy='mean', fill_value=None, verbose=0, copy=True, add_indicator=False) |
+| Imputation transformer for completing missing values. Parameters | ---------- | missing_values : number, string, np.nan (default) or None | The placeholder for the missing values. All occurrences of | missing_values will be imputed.
+
+strategy : string, default='mean' | The imputation strategy. |
+| - If "mean", then replace missing values using the mean along | each column. Can only be used with numeric data.
+| - If "median", then replace missing values using the median along | each column. Can only be used with numeric data. 
+| - If "most_frequent", then replace missing using the most frequent | value along each column. Can be used with strings or numeric data.
+| - If "constant", then replace missing values with fill_value. Can be | used with strings or numeric data."""
+
+from sklearn.impute import SimpleImputer
+imputer=SimpleImputer(strategy="median")
+#Since the median can only be computed on numerical attributes,we create a copy of the data without the text attribute ocean_proximity:
+housing_new=housing.drop("ocean_proximity",axis=1)
+imputer.fit(housing_new)
+imputer.statistics_#The imputer has simply computed the median of each attribute and stored theresult in its statistics_ variable
+
+#Now we can use this “trained” imputer to transform the training set by replacing missing values with the learned medians:
+
+X = imputer.transform(housing_new)
+print(X)
+
+#But the result is a plain NumPy array containing the transformed features. we need to make it back into a pandas DataFrame
+housing_ready=pd.DataFrame(X,columns=housing_new.columns,index=housing_new.index)
+housing_ready.head()
+
+plt.figure(figsize=(15,10))
+sns.heatmap(housing_ready.isnull()) # we can visualize it to see whether there are missing values or not
+#Now the data is without any missing value in all numerical columns
+
+
+
+      """ 4.2. Handling Text and Categorical Variables:"""
+housing_cat=housing[["ocean_proximity"]] # As I show previously, there is only one categorical variable in the dataset
+print(housing_cat)
+
+#we need to convert these categories from text to numbers
+from sklearn.preprocessing import OrdinalEncoder
+ordinal_encoder = OrdinalEncoder()
+
+"""OrdinalEncoder(*, categories='auto', dtype=<class 'numpy.float64'>) |
+| Encode categorical features as an integer array. |
+| The input to this transformer should be an array-like of integers or 
+| strings, denoting the values taken on by categorical (discrete) features. 
+| The features are converted to ordinal integers. This results in | a single column of integers (0 to n_categories - 1) per feature."""
+
+housing_cat_encoded = ordinal_encoder.fit_transform(housing_cat) #This returns a numpy array
+housing_cat_encoded[:10]
+
+#we can get the list of categories using the categories_ instance variable. It is a list containing a 1D array of categories for each categorical attribute
+ordinal_encoder.categories_
+
+housing["ocean_proximity"]=pd.DataFrame(housing_cat_encoded) # here I redefine our categorical variable according to our new adjustments
+housing["ocean_proximity"]=housing["ocean_proximity"].fillna(housing["ocean_proximity"].median()) # I fill the missing data if there exists with the median
+housing["ocean_proximity"]
+
+data = pd.concat([housing_ready, housing["ocean_proximity"]], axis = 1) #here I cincatenate the numerical columns with the categorical columns
+y=data["median_house_value"] # Here we assign our target variable
+data.drop("median_house_value",axis=1,inplace=True)
+X=data This represents our training set
+#Now our data is ready for machine learning algorithms
+
+
+"""6.Training and Evaluating the Trainig Set"""
+
+#First of all, we split data into training and test set before we apply the algorithm
+from sklearn.model_selection import train_test_split
+X_train,X_test,y_train,y_test=train_test_split(X,y,test_size=0.2,random_state=42)
+from sklearn.linear_model import LinearRegression
+lm=LinearRegression()
+lm.fit(X_train,y_train) # here I train our linear regression algorithm with the training set
+
+#Now we need to evaluate how good our machine learning model performs
+#In order to evaluate the performance we need to predict the test data and compare the predictions with the actual test data values
+predictions=lm.predict(X_test)
+#here we predict the y_test values from X_test data according to the our trained Linear Regression data
+print(predictions)
+
+# here I will visualize the real test values(y_test) versus the predicted values.
+sns.scatterplot(y_test,predictions)
+#It seems that our linear regression model predict ver well
+
+
+# I will evaluate our model performance by calculating the residual sum of squares and the explained variance score
+from sklearn import metrics
+print("MAE:",metrics.mean_absolute_error(y_test,predictions))
+print ("MSE:",metrics.mean_squared_error(y_test,predictions))
+print("RMSE:",np.sqrt(metrics.mean_squared_error(y_test,predictions)))
+
+#Evaluation of  the explained variance score (R^2)
+metrics.explained_variance_score(y_test,predictions) #This shows our model predict %62 of the variance
+
+sns.distplot(y_test-predictions,bins=50) #this figure also proves that our model fits good, but not enough
+#There is no huge differences between our predictions and actual y data
+
+#here I command to bring coefficients of every column
+cdf=pd.DataFrame(lm.coef_,X.columns,columns=["Coefficients"])
+cdf # This represents one unit increase in every independent variable or columns cause how many increase or decrease in the target
+
+
+"""All of these signs show that Linear Regression is not a good option to predict. We need more complex algorithms or models. 
+I will try DecisionTreeRegressor model which is a powerful model, capable of finding complex nonlinear relationships in the data"""
+
+
+#Now I train the Decision Tree Regression Model
+from sklearn.tree import DecisionTreeRegressor
+tree=DecisionTreeRegressor()
+tree.fit(X_train,y_train) 
+predictions=tree.predict(X_test)
+print(predictions)
+
+# Now I will evaluate how good this model is: here I will visualize the real test values(y_test) versus the predicted values like the previous model
+sns.scatterplot(y_test,predictions)
+
+#Evaluation of  the explained variance score (R^2)
+metrics.explained_variance_score(y_test,predictions) #This shows our model predict %62 of the variance
+
+"""It seems decision tree model is not good for this data compared to linear regression, so we need try another model: 
+The RandomForestRegressor works by training many Decision Trees on random subsets of the features, then averaging out their predictions"""
+
+from sklearn.ensemble import RandomForestRegressor
+forest=RandomForestRegressor()
+forest.fit(X_train,y_train)
+# As we can see trying different machine learning model are not difficult after reparing data for machine learning
+
+predictions=forest.predict(X_test)
+print(predictions)
+
+# Now I will evaluate how good this model is: here I will visualize the real test values(y_test) versus the predicted values with the same procedures
+sns.scatterplot(y_test,predictions)
+
+print("MAE:",metrics.mean_absolute_error(y_test,predictions))
+print ("MSE:",metrics.mean_squared_error(y_test,predictions))
+print("RMSE:",np.sqrt(metrics.mean_squared_error(y_test,predictions)))
+
+"""The values of MAE,MSE and RMSE was as follows: MAE: 50510.92379463419 MSE: 4885570662.763187 RMSE: 69896.85731678634
+When I compare the differences between the predictions of two models and the actual data, RandomForestRegressor performs better than the Linear Regression Model"""
+
+#Evaluation of  the explained variance score (R^2)
+metrics.explained_variance_score(y_test,predictions) #This shows our model predict %80 of the variance
+#The predictions of this model is far better than the other although we have not done aby changes with the data
+
+
+
+
+
+
+
+
+
+     
+
+
+
+
+
+
+
+
